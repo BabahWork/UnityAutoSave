@@ -1,8 +1,11 @@
 using UnityEngine;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using System.IO;
 using System.Net;
 using System;
+using System.Threading.Tasks;
+using System.Net.Http;
 
 public class AutoSaveWindow : EditorWindow
 {
@@ -12,66 +15,71 @@ public class AutoSaveWindow : EditorWindow
     private static int saveType;
     private static bool showNotifications;
     private static bool showDebug;
-
-    private const string PREFS_SAVE_INTERVAL = "AutoSave_SaveInterval";
-    private const string PREFS_AUTO_SAVE_ENABLED = "AutoSave_Enabled";
-    private const string PREFS_SAVE_TYPE = "AutoSave_SaveType";
-    private const string PREFS_SHOW_NOTIFICATIONS = "AutoSave_ShowNotifications";
-    private const string PREFS_SHOW_DEBUG = "AutoSave_ShowDebug";
     
-    private const string currentVersion = "1.0.2";
+    private const string currentVersion = "1.0.1";
     private const string versionURL = "https://raw.githubusercontent.com/BabahWork/UnityAutoSave/main/autosave_version.txt";
-private const string scriptURL = "https://raw.githubusercontent.com/BabahWork/UnityAutoSave/main/Editor/AutoSaveWindow.cs";
+    private const string scriptURL = "https://raw.githubusercontent.com/BabahWork/UnityAutoSave/main/Editor/AutoSaveWindow.cs";
     private const string scriptPath = "Assets/Editor/AutoSaveWindow.cs";
     private static string latestVersion = "Unknown";
-    private static bool isUpdateAvailable = false;
+    private static bool isUpdateAvailable;
 
     [MenuItem("Tools/Auto Save Settings")]
     public static void ShowWindow()
     {
         var window = GetWindow<AutoSaveWindow>("Auto Save Settings");
-        window.minSize = new Vector2(300, 340);
+        window.minSize = new Vector2(400, 500);
     }
 
-    private void OnEnable()
-    {
-        LoadSettings();
-    }
+    private void OnEnable() => LoadSettings();
 
     private void OnGUI()
     {
         GUILayout.Space(10);
-        GUILayout.Label("⚙️ Auto Save Settings", new GUIStyle(EditorStyles.boldLabel) { alignment = TextAnchor.MiddleCenter, fontSize = 16 });
-        GUILayout.Space(10);
+        EditorGUILayout.LabelField("⚙️ Auto Save Settings", new GUIStyle(EditorStyles.boldLabel) { alignment = TextAnchor.MiddleCenter, fontSize = 20 });
+        GUILayout.Space(15);
 
-        saveInterval = EditorGUILayout.IntSlider("⏳ Save Interval (sec)", saveInterval, 30, 600);
-        GUILayout.Space(10);
+        EditorGUILayout.BeginVertical("box");
+        EditorGUILayout.LabelField("🔧 General Settings", EditorStyles.boldLabel);
+        saveInterval = EditorGUILayout.IntSlider(new GUIContent("⏳ Save Interval (sec)", "Время между автосохранениями"), saveInterval, 30, 600);
+        isAutoSaveEnabled = EditorGUILayout.Toggle(new GUIContent("✅ Enable Auto Save"), isAutoSaveEnabled);
+        EditorGUILayout.EndVertical();
 
-        GUILayout.Label("💾 Save Type:");
+        GUILayout.Space(10);
+        EditorGUILayout.BeginVertical("box");
+        EditorGUILayout.LabelField("💾 Save Options", EditorStyles.boldLabel);
         saveType = GUILayout.Toolbar(saveType, new string[] { "Scene", "Assets", "All" });
-        GUILayout.Space(10);
-        
-        showNotifications = EditorGUILayout.Toggle("🔔 Show Notifications", showNotifications);
-        showDebug = EditorGUILayout.Toggle("🐞 Show Debug Logs", showDebug);
-        GUILayout.Space(10);
+        EditorGUILayout.EndVertical();
 
-        if (GUILayout.Button("🔄 Check for Updates", GUILayout.Height(35)))
-        {
-            CheckForUpdates();
-        }
+        GUILayout.Space(10);
+        EditorGUILayout.BeginVertical("box");
+        EditorGUILayout.LabelField("🔔 Notifications", EditorStyles.boldLabel);
+        showNotifications = EditorGUILayout.Toggle(new GUIContent("📢 Show Notifications"), showNotifications);
+        showDebug = EditorGUILayout.Toggle(new GUIContent("🐞 Show Debug Logs"), showDebug);
+        EditorGUILayout.EndVertical();
+        
+        GUILayout.Space(10);
+        EditorGUILayout.BeginHorizontal("box");
+        GUIStyle statusStyle = new GUIStyle(EditorStyles.label);
+        statusStyle.normal.textColor = isAutoSaveEnabled ? Color.green : Color.red;
+        GUILayout.Label("●", statusStyle);
+        GUILayout.Label(isAutoSaveEnabled ? "Auto Save Enabled" : "Auto Save Disabled", EditorStyles.boldLabel);
+        if (GUILayout.Button("🔄", GUILayout.Width(30), GUILayout.Height(25))) isAutoSaveEnabled = true;
+        GUI.enabled = isAutoSaveEnabled;
+        if (GUILayout.Button("■ Stop", GUILayout.Width(60), GUILayout.Height(25))) isAutoSaveEnabled = false;
+        GUI.enabled = true;
+        EditorGUILayout.EndHorizontal();
+
+        GUILayout.Space(10);
+        if (GUILayout.Button("🔄 Check for Updates", GUILayout.Height(35))) CheckForUpdates();
 
         if (isUpdateAvailable)
         {
             EditorGUILayout.HelpBox($"New version available: {latestVersion}. Please update!", MessageType.Warning);
-            if (GUILayout.Button("🔽 Download & Update", GUILayout.Height(35)))
-            {
-                DownloadAndUpdateScript();
-            }
+            if (GUILayout.Button("🔽 Download & Update", GUILayout.Height(40))) DownloadAndUpdateScript();
         }
 
         GUILayout.Space(10);
-
-        if (GUILayout.Button("💾 Apply Settings", GUILayout.Height(35)))
+        if (GUILayout.Button("💾 Apply Settings", GUILayout.Height(40)))
         {
             SaveSettings();
             nextSaveTime = EditorApplication.timeSinceStartup + saveInterval;
@@ -80,64 +88,52 @@ private const string scriptURL = "https://raw.githubusercontent.com/BabahWork/Un
 
     private static void LoadSettings()
     {
-        saveInterval = EditorPrefs.GetInt(PREFS_SAVE_INTERVAL, 300);
-        isAutoSaveEnabled = EditorPrefs.GetBool(PREFS_AUTO_SAVE_ENABLED, true);
-        saveType = EditorPrefs.GetInt(PREFS_SAVE_TYPE, 0);
-        showNotifications = EditorPrefs.GetBool(PREFS_SHOW_NOTIFICATIONS, true);
-        showDebug = EditorPrefs.GetBool(PREFS_SHOW_DEBUG, false);
+        saveInterval = EditorPrefs.GetInt("AutoSave_SaveInterval", 300);
+        isAutoSaveEnabled = EditorPrefs.GetBool("AutoSave_Enabled", true);
+        saveType = EditorPrefs.GetInt("AutoSave_SaveType", 0);
+        showNotifications = EditorPrefs.GetBool("AutoSave_ShowNotifications", true);
+        showDebug = EditorPrefs.GetBool("AutoSave_ShowDebug", false);
     }
 
     private static void SaveSettings()
     {
-        EditorPrefs.SetInt(PREFS_SAVE_INTERVAL, saveInterval);
-        EditorPrefs.SetBool(PREFS_AUTO_SAVE_ENABLED, isAutoSaveEnabled);
-        EditorPrefs.SetInt(PREFS_SAVE_TYPE, saveType);
-        EditorPrefs.SetBool(PREFS_SHOW_NOTIFICATIONS, showNotifications);
-        EditorPrefs.SetBool(PREFS_SHOW_DEBUG, showDebug);
+        EditorPrefs.SetInt("AutoSave_SaveInterval", saveInterval);
+        EditorPrefs.SetBool("AutoSave_Enabled", isAutoSaveEnabled);
+        EditorPrefs.SetInt("AutoSave_SaveType", saveType);
+        EditorPrefs.SetBool("AutoSave_ShowNotifications", showNotifications);
+        EditorPrefs.SetBool("AutoSave_ShowDebug", showDebug);
+        nextSaveTime = EditorApplication.timeSinceStartup + saveInterval;
     }
 
-    private static void CheckForUpdates()
+    private static async Task CheckForUpdates()
     {
-        WebClient client = new WebClient();
+        using HttpClient client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
         try
         {
-            latestVersion = client.DownloadString(versionURL).Trim();
-            if (latestVersion != currentVersion)
-            {
-                isUpdateAvailable = true;
-                Debug.Log($"[AutoSave] New version available: {latestVersion}. Current: {currentVersion}");
-            }
-            else
-            {
-                Debug.Log("[AutoSave] You have the latest version.");
-            }
+            latestVersion = (await client.GetStringAsync(versionURL)).Trim();
+            isUpdateAvailable = latestVersion != currentVersion;
         }
-        catch (Exception e)
-        {
-            Debug.LogError($"[AutoSave] Update check failed: {e.Message}");
-        }
+        catch (Exception e) { Debug.LogError($"[AutoSave] Update check failed: {e.Message}"); }
     }
 
-    private static void DownloadAndUpdateScript()
+    private static async void DownloadAndUpdateScript()
     {
-        WebClient client = new WebClient();
         try
         {
-            string newScript = client.DownloadString(scriptURL);
+            EditorUtility.DisplayProgressBar("Auto Save Update", "Downloading new version...", 0.5f);
+            using HttpClient client = new HttpClient();
+            string newScript = await client.GetStringAsync(scriptURL);
             File.WriteAllText(scriptPath, newScript);
-            
             AssetDatabase.Refresh();
-            Debug.Log("[AutoSave] Script updated successfully! Please reload the editor.");
-            
+            EditorUtility.ClearProgressBar();
+            Debug.Log("[AutoSave] Script updated successfully! Please restart Unity.");
             if (EditorUtility.DisplayDialog("Auto Save Update", "Update completed! Please restart Unity.", "Restart Now", "Later"))
-            {
                 EditorApplication.Exit(0);
-            }
         }
         catch (Exception e)
         {
+            EditorUtility.ClearProgressBar();
             Debug.LogError($"[AutoSave] Update failed: {e.Message}");
-            EditorUtility.DisplayDialog("Auto Save Update", "Update failed. Check the console.", "OK");
         }
     }
 
@@ -151,32 +147,20 @@ private const string scriptURL = "https://raw.githubusercontent.com/BabahWork/Un
 
     private static void Update()
     {
-        if (isAutoSaveEnabled && EditorApplication.timeSinceStartup >= nextSaveTime)
-        {
-            SaveProject();
-            nextSaveTime = EditorApplication.timeSinceStartup + saveInterval;
-        }
+        if (!isAutoSaveEnabled || EditorApplication.timeSinceStartup < nextSaveTime) return;
+        SaveProject();
+        nextSaveTime = EditorApplication.timeSinceStartup + saveInterval;
     }
 
     private static void SaveProject()
     {
         if (showDebug) Debug.Log("[AutoSave] Начало сохранения...");
         
-        if (saveType == 0)
+        switch (saveType)
         {
-            EditorApplication.SaveScene(EditorApplication.currentScene);
-            LogNotification("Сохранена только сцена.");
-        }
-        else if (saveType == 1)
-        {
-            AssetDatabase.SaveAssets();
-            LogNotification("Сохранены только ассеты.");
-        }
-        else
-        {
-            EditorApplication.SaveScene(EditorApplication.currentScene);
-            AssetDatabase.SaveAssets();
-            LogNotification("Сохранены сцена и ассеты.");
+            case 0: EditorSceneManager.SaveOpenScenes(); LogNotification("Сохранена только сцена."); break;
+            case 1: AssetDatabase.SaveAssets(); LogNotification("Сохранены только ассеты."); break;
+            default: EditorSceneManager.SaveOpenScenes(); AssetDatabase.SaveAssets(); LogNotification("Сохранены сцена и ассеты."); break;
         }
         
         if (showDebug) Debug.Log("[AutoSave] Сохранение завершено.");
@@ -184,11 +168,7 @@ private const string scriptURL = "https://raw.githubusercontent.com/BabahWork/Un
 
     private static void LogNotification(string message)
     {
-        if (showNotifications)
-        {
-            EditorUtility.DisplayDialog("Auto Save", message, "OK");
-        }
-        
+        if (showNotifications) EditorUtility.DisplayDialog("Auto Save", message, "OK");
         if (showDebug) Debug.Log("[AutoSave] " + message);
     }
 }
