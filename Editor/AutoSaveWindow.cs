@@ -16,7 +16,7 @@ public class AutoSaveWindow : EditorWindow
     private static bool showNotifications;
     private static bool showDebug;
     
-    private const string currentVersion = "1.0.3";
+    private const string currentVersion = "1.0.0";
     private const string versionURL = "https://raw.githubusercontent.com/BabahWork/UnityAutoSave/main/autosave_version.txt";
     private const string scriptURL = "https://raw.githubusercontent.com/BabahWork/UnityAutoSave/main/Editor/AutoSaveWindow.cs";
     private const string scriptPath = "Assets/Editor/AutoSaveWindow.cs";
@@ -158,12 +158,12 @@ public class AutoSaveWindow : EditorWindow
         
         switch (saveType)
         {
-            case 0: EditorSceneManager.SaveOpenScenes(); LogNotification("Сохранена только сцена."); break;
-            case 1: AssetDatabase.SaveAssets(); LogNotification("Сохранены только ассеты."); break;
-            default: EditorSceneManager.SaveOpenScenes(); AssetDatabase.SaveAssets(); LogNotification("Сохранены сцена и ассеты."); break;
+            case 0: EditorSceneManager.SaveOpenScenes(); LogNotification("Only the scene has survived"); break;
+            case 1: AssetDatabase.SaveAssets(); LogNotification("Only assets saved"); break;
+            default: EditorSceneManager.SaveOpenScenes(); AssetDatabase.SaveAssets(); LogNotification("Scene and assets saved"); break;
         }
         
-        if (showDebug) Debug.Log("[AutoSave] Сохранение завершено.");
+        if (showDebug) Debug.Log("[AutoSave] Saving complete");
     }
 
     private static void LogNotification(string message)
