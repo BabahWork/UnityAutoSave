@@ -2,10 +2,9 @@ using UnityEngine;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using System.IO;
-using System.Net;
+using System.Net.Http;
 using System;
 using System.Threading.Tasks;
-using System.Net.Http;
 
 public class AutoSaveWindow : EditorWindow
 {
@@ -22,6 +21,7 @@ public class AutoSaveWindow : EditorWindow
     private const string scriptPath = "Assets/Editor/AutoSaveWindow.cs";
     private static string latestVersion = "Unknown";
     private static bool isUpdateAvailable;
+    private static bool hasLoggedPlayModeWarning = false;
 
     [MenuItem("Tools/Auto Save Settings")]
     public static void ShowWindow()
@@ -40,7 +40,7 @@ public class AutoSaveWindow : EditorWindow
 
         EditorGUILayout.BeginVertical("box");
         EditorGUILayout.LabelField("🔧 General Settings", EditorStyles.boldLabel);
-        saveInterval = EditorGUILayout.IntSlider(new GUIContent("⏳ Save Interval (sec)", "Время между автосохранениями"), saveInterval, 30, 600);
+        saveInterval = EditorGUILayout.IntSlider(new GUIContent("⏳ Save Interval (sec)", "Time between autosaves"), saveInterval, 30, 600);
         isAutoSaveEnabled = EditorGUILayout.Toggle(new GUIContent("✅ Enable Auto Save"), isAutoSaveEnabled);
         EditorGUILayout.EndVertical();
 
@@ -77,6 +77,11 @@ public class AutoSaveWindow : EditorWindow
             EditorGUILayout.HelpBox($"New version available: {latestVersion}. Please update!", MessageType.Warning);
             if (GUILayout.Button("🔽 Download & Update", GUILayout.Height(40))) DownloadAndUpdateScript();
         }
+        if (!isUpdateAvailable && latestVersion != "Unknown")
+        {
+            EditorGUILayout.HelpBox($"You are using the latest version ({currentVersion})", MessageType.Info);
+        }
+
 
         GUILayout.Space(10);
         if (GUILayout.Button("💾 Apply Settings", GUILayout.Height(40)))
@@ -105,16 +110,25 @@ public class AutoSaveWindow : EditorWindow
         nextSaveTime = EditorApplication.timeSinceStartup + saveInterval;
     }
 
-    private static async Task CheckForUpdates()
+    private static async void CheckForUpdates()
     {
         using HttpClient client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
         try
         {
             latestVersion = (await client.GetStringAsync(versionURL)).Trim();
             isUpdateAvailable = latestVersion != currentVersion;
+
+            if (!isUpdateAvailable)
+            {
+                Debug.Log("[AutoSave] You are using the latest version");
+            }
         }
-        catch (Exception e) { Debug.LogError($"[AutoSave] Update check failed: {e.Message}"); }
+        catch (Exception e) 
+        { 
+            Debug.LogError($"[AutoSave] Update check failed: {e.Message}"); 
+        }
     }
+
 
     private static async void DownloadAndUpdateScript()
     {
@@ -148,23 +162,47 @@ public class AutoSaveWindow : EditorWindow
     private static void Update()
     {
         if (!isAutoSaveEnabled || EditorApplication.timeSinceStartup < nextSaveTime) return;
+
+        if (EditorApplication.isPlaying) 
+        {
+            if (!hasLoggedPlayModeWarning && showDebug) 
+            {
+                Debug.Log("[AutoSave] Autosave is disabled in game mode");
+                hasLoggedPlayModeWarning = true;
+            }
+            return;
+        }
+        hasLoggedPlayModeWarning = false;
         SaveProject();
         nextSaveTime = EditorApplication.timeSinceStartup + saveInterval;
     }
 
     private static void SaveProject()
     {
-        if (showDebug) Debug.Log("[AutoSave] Начало сохранения...");
+        if (EditorApplication.isPlaying) return;
         
+        if (showDebug) Debug.Log("[AutoSave] Start saving...");
+
         switch (saveType)
         {
-            case 0: EditorSceneManager.SaveOpenScenes(); LogNotification("Only the scene has survived"); break;
-            case 1: AssetDatabase.SaveAssets(); LogNotification("Only assets saved"); break;
-            default: EditorSceneManager.SaveOpenScenes(); AssetDatabase.SaveAssets(); LogNotification("Scene and assets saved"); break;
+            case 0: 
+                EditorSceneManager.SaveOpenScenes(); 
+                LogNotification("Only the scene has survived"); 
+                break;
+            case 1: 
+                AssetDatabase.SaveAssets(); 
+                LogNotification("Only assets saved"); 
+                break;
+            default: 
+                EditorSceneManager.SaveOpenScenes(); 
+                AssetDatabase.SaveAssets(); 
+                LogNotification("Scene and assets saved"); 
+                break;
         }
-        
+
         if (showDebug) Debug.Log("[AutoSave] Saving complete");
     }
+
 
     private static void LogNotification(string message)
     {
