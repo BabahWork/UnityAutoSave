@@ -15,7 +15,7 @@ public class AutoSaveWindow : EditorWindow
     private static bool showNotifications;
     private static bool showDebug;
     
-    private const string currentVersion = "1.0.0";
+    private const string currentVersion = "1.0.1";
     private const string versionURL = "https://raw.githubusercontent.com/BabahWork/UnityAutoSave/main/autosave_version.txt";
     private const string scriptURL = "https://raw.githubusercontent.com/BabahWork/UnityAutoSave/main/Editor/AutoSaveWindow.cs";
     private const string scriptPath = "Assets/Editor/AutoSaveWindow.cs";
